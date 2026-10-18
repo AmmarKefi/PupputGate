@@ -1,0 +1,19 @@
+# One-command PostgreSQL for PupputGate development.
+#   docker compose up -d
+# Then set DATABASE_URL in server/.env to:
+#   postgresql://pupput:pupput@localhost:5432/pupputgate?schema=public
+services:
+  db:
+    image: postgres:16
+    container_name: pupputgate-db
+    environment:
+      POSTGRES_USER: pupput
+      POSTGRES_PASSWORD: pupput
+      POSTGRES_DB: pupputgate
+    ports:
+      - '5432:5432'
+    volumes:
+      - pupput_pg:/var/lib/postgresql/data
+
+volumes:
+  pupput_pg:

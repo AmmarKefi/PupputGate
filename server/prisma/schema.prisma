@@ -1,0 +1,395 @@
+// PupputGate database schema (PostgreSQL + Prisma 6).
+// Money is stored as integer millimes (1 DT = 1000 millimes). Timestamps are UTC.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  MERCHANT
+  ADMIN
+}
+
+enum CommerceMode {
+  APPOINTMENT
+  ORDER
+  SHOWCASE
+  QUOTE
+}
+
+enum BusinessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum StockStatus {
+  IN_STOCK
+  UNIQUE_PIECE
+  MADE_TO_ORDER
+  OUT_OF_STOCK
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  REJECTED
+  CANCELLED
+  NO_SHOW
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY_FOR_PICKUP
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum ServiceRequestStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  QUOTE_SENT
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  DECLINED
+  CANCELLED
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  REPORTED
+  HIDDEN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  fullName     String
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  role         Role     @default(CUSTOMER)
+  locale       String   @default("fr")
+  suspended    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions        Session[]
+  memberships     Membership[]
+  appointments    Appointment[]
+  orders          Order[]
+  serviceRequests ServiceRequest[]
+  reviews         Review[]
+  favourites      Favourite[]
+  notifications   Notification[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Category {
+  id         String     @id @default(cuid())
+  slug       String     @unique
+  nameFr     String
+  nameEn     String
+  nameAr     String
+  icon       String
+  sortOrder  Int        @default(0)
+  businesses Business[]
+}
+
+model Zone {
+  id         String     @id @default(cuid())
+  slug       String     @unique
+  name       String
+  latitude   Float
+  longitude  Float
+  businesses Business[]
+}
+
+model Business {
+  id                String         @id @default(cuid())
+  slug              String         @unique
+  name              String
+  description       String?
+  shortDescription  String?
+  categoryId        String
+  category          Category       @relation(fields: [categoryId], references: [id])
+  zoneId            String
+  zone              Zone           @relation(fields: [zoneId], references: [id])
+  primaryMode       CommerceMode
+  modes             CommerceMode[]
+  status            BusinessStatus @default(PENDING)
+  coverImage        String?
+  phone             String?
+  address           String?
+  serviceArea       String?
+  latitude          Float?
+  longitude         Float?
+  hideExactLocation Boolean        @default(false)
+  capacityPerSlot   Int            @default(1)
+  slotStepMin       Int            @default(30)
+  acceptingBookings Boolean        @default(true)
+  ratingAvg         Float?
+  ratingCount       Int            @default(0)
+  isDemo            Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  memberships        Membership[]
+  openingHours       OpeningHour[]
+  scheduleExceptions ScheduleException[]
+  photos             BusinessPhoto[]
+  services           Service[]
+  products           Product[]
+  appointments       Appointment[]
+  orders             Order[]
+  serviceRequests    ServiceRequest[]
+  reviews            Review[]
+  favourites         Favourite[]
+
+  @@index([categoryId])
+  @@index([zoneId])
+  @@index([status])
+}
+
+/// Gallery photo of a business; url is a path under /uploads (served by the API).
+model BusinessPhoto {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  url        String
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([businessId])
+}
+
+model Membership {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  isOwner    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, businessId])
+  @@index([businessId])
+}
+
+model OpeningHour {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  weekday    Int // 0 = Sunday .. 6 = Saturday
+  openMinute Int? // minutes from local midnight; null = closed that day
+  closeMinute Int?
+
+  @@unique([businessId, weekday])
+}
+
+model ScheduleException {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  date       DateTime // date (UTC midnight) the exception applies to
+  closed     Boolean  @default(true)
+  reason     String?
+
+  @@unique([businessId, date])
+}
+
+model Service {
+  id          String        @id @default(cuid())
+  businessId  String
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  durationMin Int
+  priceMillimes Int
+  active      Boolean       @default(true)
+  sortOrder   Int           @default(0)
+  appointments Appointment[]
+}
+
+model Product {
+  id            String      @id @default(cuid())
+  businessId    String
+  business      Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  priceMillimes Int
+  stockStatus   StockStatus @default(IN_STOCK)
+  stockQty      Int? // for IN_STOCK; UNIQUE_PIECE implies 1
+  image         String?
+  active        Boolean     @default(true)
+  sortOrder     Int         @default(0)
+  orderItems    OrderItem[]
+
+  @@index([businessId])
+}
+
+model Appointment {
+  id            String            @id @default(cuid())
+  businessId    String
+  business      Business          @relation(fields: [businessId], references: [id])
+  customerId    String
+  customer      User              @relation(fields: [customerId], references: [id])
+  serviceId     String
+  service       Service           @relation(fields: [serviceId], references: [id])
+  startAt       DateTime // UTC
+  endAt         DateTime // UTC
+  durationMin   Int
+  priceMillimes Int
+  status        AppointmentStatus @default(PENDING)
+  note          String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([businessId, startAt])
+  @@index([customerId])
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  businessId    String
+  business      Business    @relation(fields: [businessId], references: [id])
+  customerId    String
+  customer      User        @relation(fields: [customerId], references: [id])
+  totalMillimes Int
+  pickupAt      DateTime?
+  note          String?
+  status        OrderStatus @default(PENDING)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  items         OrderItem[]
+
+  @@index([businessId])
+  @@index([customerId])
+}
+
+model OrderItem {
+  id              String  @id @default(cuid())
+  orderId         String
+  order           Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product @relation(fields: [productId], references: [id])
+  productName     String
+  quantity        Int
+  unitPriceMillimes Int
+}
+
+model ServiceRequest {
+  id          String               @id @default(cuid())
+  businessId  String
+  business    Business             @relation(fields: [businessId], references: [id])
+  customerId  String
+  customer    User                 @relation(fields: [customerId], references: [id])
+  problemType String
+  description String
+  zoneSlug    String
+  address     String? // PRIVATE: only returned to customer, assigned merchant, admin
+  timeWindow  String?
+  urgent      Boolean              @default(false)
+  photoUrls   String[]
+  status      ServiceRequestStatus @default(SUBMITTED)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  quotation   Quotation?
+
+  @@index([businessId])
+  @@index([customerId])
+}
+
+model Quotation {
+  id              String         @id @default(cuid())
+  requestId       String         @unique
+  request         ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  amountMillimes  Int
+  advanceMillimes Int?
+  scope           String?
+  validUntil      DateTime?
+  createdAt       DateTime       @default(now())
+}
+
+model Review {
+  id         String       @id @default(cuid())
+  businessId String
+  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User         @relation(fields: [authorId], references: [id])
+  rating     Int
+  comment    String?
+  status     ReviewStatus @default(PUBLISHED)
+  isDemo     Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+
+  @@index([businessId])
+}
+
+model Favourite {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, businessId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  titleKey  String
+  bodyKey   String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Labelled SIMULATION only — demonstrates how SMS reminders would be recorded.
+// Never implies a real message was delivered.
+model CommunicationLog {
+  id          String   @id @default(cuid())
+  businessId  String
+  channel     String   @default("SMS_SIMULATED")
+  recipient   String
+  body        String
+  simulated   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([businessId])
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  target    String?
+  meta      Json?
+  createdAt DateTime @default(now())
+}

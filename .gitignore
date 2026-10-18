@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+server/node_modules/
+
+# expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# native
+ios/
+android/
+
+# env & secrets  (NEVER commit the real Google Maps key)
+.env
+.env.*
+!.env.example
+
+# prisma / db
+server/prisma/*.db
+server/prisma/migrations/dev.db*
+
+# misc
+*.log
+.DS_Store
+npm-debug.*
+coverage/
+uploads/
+
+# temporary and presentation
+PITCH/
+pitch/
+.tools/
+.freebuff/
+.tc-checked.log
